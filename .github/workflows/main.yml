@@ -135,30 +135,50 @@ jobs:
           Write-Host "  - Render Mode: HardwareAccelerated"
           Write-Host "  - Performance HUD: Enabled"
 
-      
-      - name: Install Riot Games Launcher (Vietnam)
+      - name: Install and Launch Riot Games Client
         run: |
           Write-Host "Installing Riot Games Launcher - Vietnam Version..."
           $riotLauncherUrl = "https://lol.secure.dyn.riotcdn.net/channels/public/releases/windows/Riot%20Client%20Installer%20ardm.exe"
           $installerPath = "$env:TEMP\RiotClientInstaller.exe"
           
           try {
+              # Download Riot Games Launcher
+              Write-Host "Downloading Riot Games Launcher..."
               Invoke-WebRequest -Uri $riotLauncherUrl -OutFile $installerPath -ErrorAction Stop
               Write-Host "Riot Games Launcher downloaded successfully"
               
+              # Verify file was downloaded
+              if (-not (Test-Path $installerPath)) {
+                  Write-Error "Failed to download Riot Games Launcher - file not found"
+                  exit 1
+              }
+              Write-Host "File verified: $installerPath"
+              
               # Create installation directory
               New-Item -ItemType Directory -Path "C:\Games\RiotGames" -Force -ErrorAction SilentlyContinue | Out-Null
+              Write-Host "Installation directory created"
               
-              # Install silently
-              Start-Process -FilePath $installerPath -ArgumentList "--silent", "--install-directory=C:\Games\RiotGames" -Wait -ErrorAction Stop
-              Write-Host "Riot Games Launcher installed at C:\Games\RiotGames"
+              # Install Riot Games Launcher
+              Write-Host "Installing Riot Games Launcher..."
+              Start-Process -FilePath $installerPath -NoNewWindow -Wait -ErrorAction Stop
+              Write-Host "Riot Games Launcher installation completed"
               
-              # Clean up
+              # Verify installation
+              if (Test-Path "C:\Games\RiotGames\RiotClientInstaller.exe" -ErrorAction SilentlyContinue) {
+                  Write-Host "Riot Games Launcher installed successfully at C:\Games\RiotGames"
+              } else {
+                  Write-Host "Note: Installation completed. Riot Client may complete setup during RDP session"
+              }
+              
+              # Clean up installer
               Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+              Write-Host "Installer cleaned up"
           }
           catch {
-              Write-Host "Note: Riot Games Launcher installation requires manual intervention during RDP session"
-              Write-Host "Please install manually: https://lol.secure.dyn.riotcdn.net/channels/public/releases/windows/Riot%20Client%20Installer%20ardm.exe"
+              Write-Host "Error: $($_.Exception.Message)"
+              Write-Host "Note: Riot Games Launcher installation may require manual intervention during RDP session"
+              Write-Host "You can manually download and install from: https://lol.secure.dyn.riotcdn.net/channels/public/releases/windows/Riot%20Client%20Installer%20ardm.exe"
+              exit 1
           }
 
       - name: Prepare League of Legends Vietnam Game Directory
@@ -254,7 +274,7 @@ jobs:
           Write-Host "Render Mode: HardwareAccelerated"
           Write-Host "Power Plan: High Performance"
           Write-Host "========================================="
-          Write-Host "`nKết n��i RDP để bắt đầu test game!"
+          Write-Host "`nKết nối RDP để bắt đầu test game!"
           Write-Host "Ghi chú: Sử dụng Ctrl+C trong workflow để dừng`n"
 
           # Keep runner active for RDP connection
