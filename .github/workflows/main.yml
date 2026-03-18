@@ -135,30 +135,7 @@ jobs:
           Write-Host "  - Render Mode: HardwareAccelerated"
           Write-Host "  - Performance HUD: Enabled"
 
-      - name: Configure Game Performance Settings
-        run: |
-          Write-Host "Configuring system for optimal game performance..."
-          
-          # Disable Diagnostic Tracking
-          Set-Service -Name DiagTrack -StartupType Disabled -ErrorAction SilentlyContinue
-          Stop-Service -Name DiagTrack -Force -ErrorAction SilentlyContinue
-          
-          # Disable Windows Search
-          Set-Service -Name WSearch -StartupType Disabled -ErrorAction SilentlyContinue
-          Stop-Service -Name WSearch -Force -ErrorAction SilentlyContinue
-          
-          # Enable High Performance power plan
-          $powerPlan = Get-CimInstance -ClassName Win32_PowerPlan -Filter "ElementName='High performance'"
-          if ($powerPlan) {
-              powercfg /setactive $powerPlan.InstanceID.Split('\')[-1]
-              Write-Host "High Performance power plan activated"
-          }
-          
-          # Disable Visual Effects for better performance
-          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" -Name "VisualFXSetting" -Value 2 -Force
-          
-          Write-Host "System configured for optimal game performance!"
-
+      
       - name: Install Riot Games Launcher (Vietnam)
         run: |
           Write-Host "Installing Riot Games Launcher - Vietnam Version..."
