@@ -24,34 +24,7 @@ jobs:
 
           # Khởi động lại dịch vụ Remote Desktop để cập nhật cấu hình
           Restart-Service -Name TermService -Force
-       - name: Install and Configure Graphics Drivers
-          run: |
-          Write-Host "Installing graphics drivers and OpenGL support..."
-          
-          # Install DirectX 12
-          Write-Host "Installing DirectX 12 runtime..."
-          $dxUrl = "https://download.microsoft.com/download/1/7/1/1718CCC4-6315-4D8E-9543-8E28A4E18B5B/dxsetup.exe"
-          $dxPath = "$env:TEMP\dxsetup.exe"
-          try {
-              Invoke-WebRequest -Uri $dxUrl -OutFile $dxPath -TimeoutSec 30
-              Start-Process -FilePath $dxPath -ArgumentList "/silent" -Wait
-          } catch {
-              Write-Host "DirectX installation skipped - may already be present"
-          }
-          
-          # Install NVIDIA CUDA Toolkit
-          Write-Host "Attempting to install NVIDIA CUDA support..."
-          $cudaUrl = "https://developer.download.nvidia.com/compute/cuda/12.3.0/local_installers/cuda_12.3.0_546.01_windows.exe"
-          $cudaPath = "$env:TEMP\cuda_installer.exe"
-          try {
-              Invoke-WebRequest -Uri $cudaUrl -OutFile $cudaPath -TimeoutSec 60 -ErrorAction SilentlyContinue
-              if (Test-Path $cudaPath) {
-                  Start-Process -FilePath $cudaPath -ArgumentList "-s" -Wait -ErrorAction SilentlyContinue
-              }
-          } catch {
-              Write-Host "CUDA installation skipped"
-          }
-          
+
       - name: Set Virtual GPU Environment Variables
         run: |
           [System.Environment]::SetEnvironmentVariable("GPU_CAPABILITIES", "virtual:memory=1024MB", [System.EnvironmentVariableTarget]::Machine)
@@ -121,16 +94,71 @@ jobs:
           }
           Write-Host "TCP connectivity successful!"
 
+      - name: Install Visual C++ Redistributables
+        run: |
+          Write-Host "Installing Visual C++ Redistributables for League of Legends..."
+          $vcRedistUrl = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+          $vcRedistPath = "$env:TEMP\vc_redist.x64.exe"
+          Invoke-WebRequest -Uri $vcRedistUrl -OutFile $vcRedistPath -ErrorAction Stop
+          Start-Process -FilePath $vcRedistPath -ArgumentList "/quiet", "/norestart" -Wait -ErrorAction Stop
+          Remove-Item $vcRedistPath -Force
+          Write-Host "Visual C++ Redistributables installed successfully!"
+
+      - name: Install DirectX 12 Components
+        run: |
+          Write-Host "Installing DirectX 12 components..."
+          # Enable DirectX 12 for gaming
+          $dxWebUrl = "https://www.microsoft.com/en-us/download/details.aspx?id=35"
+          Write-Host "DirectX 12 is built-in to Windows 10/11"
+          
+          # Verify DirectX installation
+          $dxDiag = & dxdiag.exe /t "$env:TEMP\dxdiag.txt"
+          if (Test-Path "$env:TEMP\dxdiag.txt") {
+              Write-Host "DirectX diagnostics exported successfully"
+              Remove-Item "$env:TEMP\dxdiag.txt" -Force
+          }
+
+      - name: Upgrade GPU Settings for Gaming
+        run: |
+          Write-Host "Upgrading GPU settings for optimal gaming performance..."
+          # Upgrade GPU memory from 1GB to 4GB
+          [System.Environment]::SetEnvironmentVariable("GPU_CAPABILITIES", "virtual:memory=4096MB", [System.EnvironmentVariableTarget]::Machine)
+          [System.Environment]::SetEnvironmentVariable("GPU_MEMORY_MB", "4096", [System.EnvironmentVariableTarget]::Machine)
+          # Change from SoftwareOnly to HardwareAccelerated
+          [System.Environment]::SetEnvironmentVariable("RenderMode", "HardwareAccelerated", [System.EnvironmentVariableTarget]::Machine)
+          # Enable GPU debugging and performance HUD
+          [System.Environment]::SetEnvironmentVariable("GPU_DEBUG", "1", [System.EnvironmentVariableTarget]::Machine)
+          [System.Environment]::SetEnvironmentVariable("SHOW_GPU_PERF_HUD", "1", [System.EnvironmentVariableTarget]::Machine)
+          
+          Write-Host "GPU Settings Updated:"
+          Write-Host "  - GPU Memory: 4096 MB"
+          Write-Host "  - Render Mode: HardwareAccelerated"
+          Write-Host "  - Performance HUD: Enabled"
+
+      
+      
       - name: Maintain Connection
         run: |
-          Write-Host "`n=== RDP ACCESS ==="
+          Write-Host "`n========================================="
+          Write-Host "===     RDP & GAME TESTING READY       ==="
+          Write-Host "========================================="
+          Write-Host "`n[RDP CONNECTION INFO]"
           Write-Host "Address: $env:TAILSCALE_IP"
           Write-Host "Username: RDP"
           Write-Host "Password: $(echo $env:RDP_CREDS)"
-          Write-Host "==================`n"
+          Write-Host "`n[GAME TESTING INFO]"
+          Write-Host "Game: League of Legends Vietnam (LMHT)"
+          Write-Host "Installation Path: $env:GAME_PATH"
+          Write-Host "Launcher: Riot Games Launcher (Vietnam)"
+          Write-Host "GPU Memory: 4096 MB"
+          Write-Host "Render Mode: HardwareAccelerated"
+          Write-Host "Power Plan: High Performance"
+          Write-Host "========================================="
+          Write-Host "`nKết nối RDP để bắt đầu test game!"
+          Write-Host "Ghi chú: Sử dụng Ctrl+C trong workflow để dừng`n"
 
-          # Giữ runner hoạt động
+          # Keep runner active for RDP connection
           while ($true) {
-              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+              Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ✓ RDP Active - LMHT Ready for Testing"
               Start-Sleep -Seconds 300
           }
