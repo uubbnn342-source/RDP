@@ -54,39 +54,7 @@ jobs:
               Write-Host "CUDA installation skipped"
           }
 
-      - name: Install OpenGL and Gaming Libraries
-        run: |
-          Write-Host "Installing OpenGL and gaming support libraries..."
-          
-          # Install Vulkan SDK
-          $vulkanUrl = "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe"
-          $vulkanPath = "$env:TEMP\vulkan-sdk.exe"
-          try {
-              Invoke-WebRequest -Uri $vulkanUrl -OutFile $vulkanPath -TimeoutSec 30 -ErrorAction SilentlyContinue
-              if (Test-Path $vulkanPath) {
-                  Start-Process -FilePath $vulkanPath -ArgumentList "/S" -Wait -ErrorAction SilentlyContinue
-              }
-          } catch {
-              Write-Host "Vulkan SDK installation attempted"
-          }
-          
-          # Install Visual C++ Runtimes
-          Write-Host "Installing Visual C++ Runtime Libraries..."
-          $vcredist = @(
-              "https://aka.ms/vs/17/release/vc_redist.x64.exe",
-              "https://aka.ms/vs/17/release/vc_redist.x86.exe"
-          )
-          
-          foreach ($url in $vcredist) {
-              try {
-                  $fileName = ($url -split '/')[-1]
-                  $filePath = "$env:TEMP\$fileName"
-                  Invoke-WebRequest -Uri $url -OutFile $filePath -TimeoutSec 30
-                  Start-Process -FilePath $filePath -ArgumentList "/install /quiet /norestart" -Wait
-              } catch {
-                  Write-Host "VC Redist installation skipped"
-              }
-          }
+   
 
       - name: Configure High Performance GPU Settings
         run: |
@@ -104,19 +72,7 @@ jobs:
           
           Write-Host "GPU settings configured for gaming"
 
-      - name: Optimize Display and Audio Settings
-        run: |
-          Write-Host "Optimizing display and audio for gaming..."
-          
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "MaxMonitors" -Value 4 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "MaxXResolution" -Value 3840 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "MaxYResolution" -Value 2160 -Force
-          
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "fDisableCdm" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "fDisableCam" -Value 0 -Force
-          
-          Write-Host "Display and audio settings optimized"
-
+      
       - name: Disable Power Saving Features
         run: |
           Write-Host "Disabling power saving to maximize gaming performance..."
