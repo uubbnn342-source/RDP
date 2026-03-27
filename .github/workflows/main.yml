@@ -73,20 +73,8 @@ jobs:
           Write-Host "GPU settings configured for gaming"
 
       
-      - name: Disable Power Saving Features
-        run: |
-          Write-Host "Disabling power saving to maximize gaming performance..."
-          
-          powercfg /change monitor-timeout-ac 0
-          powercfg /change disk-timeout-ac 0
-          powercfg /change standby-timeout-ac 0
-          powercfg /change hibernate-timeout-ac 0
-          
-          powercfg /setactive 8c5e7fda-e8bf-45a6-a6cc-4b3c5b93c220
-          powercfg /change processor-throttling-ac never
-          
-          Write-Host "Power settings optimized for gaming"
-
+      
+        
       - name: Create RDP User with Secure Password
         run: |
           Add-Type -AssemblyName System.Security
