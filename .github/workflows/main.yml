@@ -1,4 +1,4 @@
-name: RDP Gaming Optimized
+name: RDP
 
 on:
   workflow_dispatch:
@@ -9,32 +9,36 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Enable RDP & Configure Firewall
+      - name: Configure Core RDP Settings
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0
-          netsh advfirewall firewall delete rule name="RDP-Tailscale" >$null 2>&1
+          # Enable Remote Desktop và tắt Network Level Authentication (nếu cần)
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
+
+          # Xoá rule firewall nếu tồn tại để tránh trùng tên
+          netsh advfirewall firewall delete rule name="RDP-Tailscale"
+
+          # Mở port 3389 cho RDP
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
-          Restart-Service -Name TermService
 
-      - name: Set Virtual GPU Variables (4GB VRAM, Hardware mode)
+          # Khởi động lại dịch vụ Remote Desktop để cập nhật cấu hình
+          Restart-Service -Name TermService -Force
+
+      - name: Set Virtual GPU Environment Variables
         run: |
-          [System.Environment]::SetEnvironmentVariable("GPU_CAPABILITIES", "virtual:memory=4096MB", [System.EnvironmentVariableTarget]::Machine)
-          [System.Environment]::SetEnvironmentVariable("GPU_MEMORY_MB", "4096", [System.EnvironmentVariableTarget]::Machine)
-          [System.Environment]::SetEnvironmentVariable("RenderMode", "HardwareAccelerated", [System.EnvironmentVariableTarget]::Machine)
-          [System.Environment]::SetEnvironmentVariable("GPU_DEBUG", "1", [System.EnvironmentVariableTarget]::Machine)
-          [System.Environment]::SetEnvironmentVariable("SHOW_GPU_PERF_HUD", "1", [System.EnvironmentVariableTarget]::Machine)
-        shell: pwsh
+          [System.Environment]::SetEnvironmentVariable("GPU_CAPABILITIES", "virtual:memory=1024MB", [System.EnvironmentVariableTarget]::Machine)
+          [System.Environment]::SetEnvironmentVariable("GPU_MEMORY_MB", "1024", [System.EnvironmentVariableTarget]::Machine)
+          [System.Environment]::SetEnvironmentVariable("RenderMode", "SoftwareOnly", [System.EnvironmentVariableTarget]::Machine)
 
-      - name: Create RDP User
+      - name: Create RDP User with Secure Password
         run: |
           Add-Type -AssemblyName System.Security
           $charSet = @{
-            Upper   = [char[]](65..90)
-            Lower   = [char[]](97..122)
-            Number  = [char[]](48..57)
-            Special = ([char[]](33..47) + [char[]](58..64) + [char[]](91..96) + [char[]](123..126))
+              Upper   = [char[]](65..90)      # A-Z
+              Lower   = [char[]](97..122)     # a-z
+              Number  = [char[]](48..57)      # 0-9
+              Special = ([char[]](33..47) + [char[]](58..64) + [char[]](91..96) + [char[]](123..126)) # Ký tự đặc biệt
           }
           $rawPassword = @()
           $rawPassword += $charSet.Upper | Get-Random -Count 4
@@ -43,13 +47,14 @@ jobs:
           $rawPassword += $charSet.Special | Get-Random -Count 4
           $password = -join ($rawPassword | Sort-Object { Get-Random })
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          if (-not (Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue)) {
-            New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
-            Add-LocalGroupMember -Group "Administrators" -Member "RDP"
-            Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
-          }
+          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
           echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
-        shell: pwsh
+          if (-not (Get-LocalUser -Name "RDP")) {
+              Write-Error "User creation failed"
+              exit 1
+          }
 
       - name: Install Tailscale
         run: |
@@ -58,62 +63,47 @@ jobs:
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
           Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
           Remove-Item $installerPath -Force
-        shell: pwsh
 
-      - name: Connect Tailscale & Export IP
+      - name: Establish Tailscale Connection
         run: |
+          # Bring up Tailscale with the provided auth key and set a unique hostname
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
+
+          # Wait for Tailscale to assign an IP
           $tsIP = $null
-          for ($i=0; $i -lt 10; $i++) {
-            $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-            if ($tsIP) { break }
-            Start-Sleep -Seconds 5
+          $retries = 0
+          while (-not $tsIP -and $retries -lt 10) {
+              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              Start-Sleep -Seconds 5
+              $retries++
           }
-          if (-not $tsIP) { Write-Error "Tailscale IP not assigned."; exit 1 }
+          if (-not $tsIP) {
+              Write-Error "Tailscale IP not assigned. Exiting."
+              exit 1
+          }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-        shell: pwsh
 
-      - name: Verify RDP Over Tailscale
+      - name: Verify RDP Accessibility
         run: |
-          $result = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
-          if (-not $result.TcpTestSucceeded) {
-            Write-Error "RDP port 3389 is not reachable via Tailscale."
-            exit 1
+          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          # Test connectivity using Test-NetConnection against the Tailscale IP on port 3389
+          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
+          if (-not $testResult.TcpTestSucceeded) {
+              Write-Error "TCP connection to RDP port 3389 failed"
+              exit 1
           }
-          Write-Host "RDP connectivity over Tailscale: OK."
-        shell: pwsh
+          Write-Host "TCP connectivity successful!"
 
-      - name: Install DirectX 12
+      - name: Maintain Connection
         run: |
-          Write-Host "DirectX 12 is built-in on Windows 10/11. Checking diagnostics:"
-          $dxDiag = & dxdiag.exe /t "$env:TEMP\dxdiag.txt"
-          if (Test-Path "$env:TEMP\dxdiag.txt") {
-            Write-Host "DirectX diagnostics exported."
-            Remove-Item "$env:TEMP\dxdiag.txt"
-          }
-        shell: pwsh
-
-      - name: Install Mesa3D (OpenGL Software Renderer)
-        run: |
-          $mesaUrl = "https://github.com/pal1000/mesa-dist-win/releases/download/23.3.1/mesa3d-23.3.1-release-mingw.7z"
-          $mesaArchive = "$env:TEMP\mesa3d.7z"
-          $mesaExtract = "$env:TEMP\mesa3d"
-          Invoke-WebRequest -Uri $mesaUrl -OutFile $mesaArchive
-          7z x $mesaArchive -o$mesaExtract | Out-Null
-          Copy-Item "$mesaExtract\x64\opengl32.dll" "C:\Windows\System32\" -Force
-          Write-Host "Mesa3D OpenGL (software rendering) installed."
-        shell: pwsh
-
-      - name: Maintain Connection for RDP + Gaming
-        run: |
-          Write-Host "`n==== RDP & GAME TEST READY ===="
-          Write-Host "[RDP CONNECTION]"
+          Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address: $env:TAILSCALE_IP"
           Write-Host "Username: RDP"
           Write-Host "Password: $(echo $env:RDP_CREDS)"
-          Write-Host "OpenGL/Mesa3D installed for software rendering."
+          Write-Host "==================`n"
+
+          # Giữ runner hoạt động
           while ($true) {
-            Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ✓ RDP Active"
-            Start-Sleep -Seconds 300
+              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+              Start-Sleep -Seconds 300
           }
-        shell: pwsh
